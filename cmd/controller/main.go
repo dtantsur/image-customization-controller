@@ -77,12 +77,14 @@ func runController(watchNamespace string, imageServer imagehandler.ImageHandler,
 		return err
 	}
 
+	client := mgr.GetClient()
+	apiReader := mgr.GetAPIReader()
 	imgReconciler := metal3iocontroller.PreprovisioningImageReconciler{
-		Client:        mgr.GetClient(),
+		Client:        client,
 		Log:           ctrl.Log.WithName("controllers").WithName("PreprovisioningImage"),
-		APIReader:     mgr.GetAPIReader(),
+		APIReader:     apiReader,
 		Scheme:        mgr.GetScheme(),
-		ImageProvider: imageprovider.NewRHCOSImageProvider(imageServer, envInputs),
+		ImageProvider: imageprovider.NewRHCOSImageProvider(imageServer, envInputs, client, apiReader),
 	}
 	if err = (&imgReconciler).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PreprovisioningImage")

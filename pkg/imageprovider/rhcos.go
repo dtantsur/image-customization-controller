@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	metal3 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/metal3-io/baremetal-operator/pkg/imageprovider"
@@ -17,9 +18,11 @@ type rhcosImageProvider struct {
 	ImageHandler   imagehandler.ImageHandler
 	EnvInputs      *env.EnvInputs
 	RegistriesConf []byte
+	client         client.Client
+	apiReader      client.Reader
 }
 
-func NewRHCOSImageProvider(imageServer imagehandler.ImageHandler, inputs *env.EnvInputs) imageprovider.ImageProvider {
+func NewRHCOSImageProvider(imageServer imagehandler.ImageHandler, inputs *env.EnvInputs, client client.Client, apiReader client.Reader) imageprovider.ImageProvider {
 	registries, err := inputs.RegistriesConf()
 	if err != nil {
 		panic(err)
@@ -29,6 +32,8 @@ func NewRHCOSImageProvider(imageServer imagehandler.ImageHandler, inputs *env.En
 		ImageHandler:   imageServer,
 		EnvInputs:      inputs,
 		RegistriesConf: registries,
+		client:         client,
+		apiReader:      apiReader,
 	}
 }
 

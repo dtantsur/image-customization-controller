@@ -2,11 +2,13 @@ package ignition
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
 
+	"github.com/pkg/errors"
+
+	ignition_config_32 "github.com/coreos/ignition/v2/config/v3_2"
 	ignition_config_types_32 "github.com/coreos/ignition/v2/config/v3_2/types"
 	vpath "github.com/coreos/vcontext/path"
 )
@@ -73,7 +75,7 @@ func (b *ignitionBuilder) ProcessNetworkState() (error, string) {
 	return nil, ""
 }
 
-func (b *ignitionBuilder) Generate() ([]byte, error) {
+func (b *ignitionBuilder) generate() (ignition_config_types_32.Config, error) {
 	config := ignition_config_types_32.Config{
 		Ignition: ignition_config_types_32.Ignition{
 			Version: "3.2.0",
@@ -125,15 +127,46 @@ func (b *ignitionBuilder) Generate() ([]byte, error) {
 	if len(b.networkKeyFiles) > 0 {
 		files, err := nmstateOutputToFiles(b.networkKeyFiles)
 		if err != nil {
-			return nil, err
+			return config, err
 		}
 		config.Storage.Files = append(config.Storage.Files, files...)
 	}
 
 	report := config.Storage.Validate(vpath.ContextPath{})
 	if report.IsFatal() {
-		return nil, errors.New(report.String())
+		return config, errors.New(report.String())
+	}
+
+	return config, nil
+}
+
+func (b *ignitionBuilder) generateAndMergeWith(other []byte) (ignition_config_types_32.Config, error) {
+	thisConfig, err := b.generate()
+	if err != nil {
+		return thisConfig, err
+	}
+
+	if len(other) == 0 {
+		return thisConfig, nil
+	}
+
+	otherConfig, report, err := ignition_config_32.ParseCompatibleVersion(other)
+	if err != nil {
+		return thisConfig, errors.Wrapf(err, "could not parse external configuration: %s", report.String())
+	}
+
+	return ignition_config_32.Merge(otherConfig, thisConfig), nil
+}
+
+func (b *ignitionBuilder) GenerateAndMergeWith(other []byte) ([]byte, error) {
+	config, err := b.generateAndMergeWith(other)
+	if err != nil {
+		return nil, err
 	}
 
 	return json.Marshal(config)
+}
+
+func (b *ignitionBuilder) Generate() ([]byte, error) {
+	return b.GenerateAndMergeWith(nil)
 }

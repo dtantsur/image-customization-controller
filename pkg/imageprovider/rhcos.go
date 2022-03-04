@@ -1,10 +1,10 @@
 package imageprovider
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/go-logr/logr"
+	"github.com/pkg/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	metal3 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
@@ -50,7 +50,7 @@ func (ip *rhcosImageProvider) SupportsFormat(format metal3.ImageFormat) bool {
 	}
 }
 
-func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.NetworkData, hostname string) ([]byte, error) {
+func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.NetworkData, hostname string, mergeWith []byte) ([]byte, error) {
 	nmstateData := networkData["nmstate"]
 
 	builder, err := ignition.New(nmstateData, ip.RegistriesConf,
@@ -76,7 +76,7 @@ func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.Netw
 		return nil, err
 	}
 
-	return builder.Generate()
+	return builder.GenerateAndMergeWith(mergeWith)
 }
 
 func imageKey(data imageprovider.ImageData) string {
@@ -90,12 +90,17 @@ func imageKey(data imageprovider.ImageData) string {
 }
 
 func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkData imageprovider.NetworkData, log logr.Logger) (string, error) {
-	ignitionConfig, err := ip.buildIgnitionConfig(networkData, data.ImageMetadata.Name)
+	url, err := ip.buildImageWithInfraEnv(data, log)
+	if url != "" || err != nil {
+		return url, err
+	}
+
+	ignitionConfig, err := ip.buildIgnitionConfig(networkData, data.ImageMetadata.Name, nil)
 	if err != nil {
 		return "", err
 	}
 
-	url, err := ip.ImageHandler.ServeImage(imageKey(data), ignitionConfig,
+	url, err = ip.ImageHandler.ServeImage(imageKey(data), ignitionConfig,
 		data.Format == metal3.ImageFormatInitRD, false)
 	if errors.As(err, &imagehandler.InvalidBaseImageError{}) {
 		return "", imageprovider.BuildInvalidError(err)
@@ -103,7 +108,45 @@ func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkDa
 	return url, err
 }
 
+func (ip *rhcosImageProvider) buildImageWithInfraEnv(data imageprovider.ImageData, log logr.Logger) (string, error) {
+	infraenv, err := GetInfraEnv(ip.apiReader, data.ImageMetadata)
+	if err != nil {
+		return "", err
+	}
+	if infraenv == nil {
+		// Fall back to the regular path
+		return "", nil
+	}
+
+	log.Info("using InfraEnv to build an image, network data will be ignored", "hostName", data.ImageMetadata.Name, "infraEnv", infraenv.Name)
+
+	ignitionConfig, err := ip.buildIgnitionConfig(nil, data.ImageMetadata.Name, []byte(infraenv.Spec.IgnitionConfigOverride))
+	if err != nil {
+		return "", err
+	}
+
+	if err = UpdateInfraEnv(ip.client, infraenv, string(ignitionConfig), log); err != nil {
+		return "", err
+	}
+
+	// If InfraEnv is not ready, the UpdateInfraEnv call returns an error,
+	// so it's safe to assume that the URL is ready.
+	switch data.Format {
+	case metal3.ImageFormatISO:
+		if infraenv.Status.ISODownloadURL == "" {
+			return "", errors.Errorf("InfraEnv %s is ready but does not have an ISO link", infraenv.Name)
+		}
+		return infraenv.Status.ISODownloadURL, nil
+	default:
+		// TODO(dtantsur): support initramfs when InfraEnv supports it
+		return "", errors.Errorf("image format %s for host %s is not supported by InfraEnv %s", data.Format, data.ImageMetadata.Name, infraenv.Name)
+	}
+}
+
 func (ip *rhcosImageProvider) DiscardImage(data imageprovider.ImageData) error {
-	ip.ImageHandler.RemoveImage(imageKey(data))
+	if GetInfraEnvName(data.ImageMetadata) == "" {
+		ip.ImageHandler.RemoveImage(imageKey(data))
+	}
+
 	return nil
 }

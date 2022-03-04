@@ -33,6 +33,7 @@ import (
 
 	metal3iov1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	metal3iocontroller "github.com/metal3-io/baremetal-operator/controllers/metal3.io"
+	aiv1beta1 "github.com/openshift/assisted-service/api/v1beta1"
 	"github.com/openshift/image-customization-controller/pkg/env"
 	"github.com/openshift/image-customization-controller/pkg/imagehandler"
 	"github.com/openshift/image-customization-controller/pkg/imageprovider"
@@ -49,6 +50,8 @@ func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
 
 	_ = metal3iov1alpha1.AddToScheme(scheme)
+
+	_ = aiv1beta1.AddToScheme(scheme)
 	// +kubebuilder:scaffold:scheme
 }
 

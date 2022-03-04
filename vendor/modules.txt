@@ -344,6 +344,7 @@ github.com/openshift/assisted-service/api/v1beta1
 # github.com/openshift/assisted-service/models v0.0.0 => github.com/openshift/assisted-service/models v0.0.0-20220311025016-e574bc2de2fd
 github.com/openshift/assisted-service/models
 # github.com/openshift/custom-resource-status v1.1.1
+## explicit
 github.com/openshift/custom-resource-status/conditions/v1
 # github.com/pelletier/go-toml v1.9.3
 github.com/pelletier/go-toml

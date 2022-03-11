@@ -129,18 +129,7 @@ func (ip *rhcosImageProvider) buildImageWithInfraEnv(data imageprovider.ImageDat
 		return "", err
 	}
 
-	// If InfraEnv is not ready, the UpdateInfraEnv call returns an error,
-	// so it's safe to assume that the URL is ready.
-	switch data.Format {
-	case metal3.ImageFormatISO:
-		if infraenv.Status.ISODownloadURL == "" {
-			return "", errors.Errorf("InfraEnv %s is ready but does not have an ISO link", infraenv.Name)
-		}
-		return infraenv.Status.ISODownloadURL, nil
-	default:
-		// TODO(dtantsur): support initramfs when InfraEnv supports it
-		return "", errors.Errorf("image format %s for host %s is not supported by InfraEnv %s", data.Format, data.ImageMetadata.Name, infraenv.Name)
-	}
+	return GetImageFromInfraEnv(infraenv, data.Format, log)
 }
 
 func (ip *rhcosImageProvider) DiscardImage(data imageprovider.ImageData) error {

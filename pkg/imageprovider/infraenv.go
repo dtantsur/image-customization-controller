@@ -15,6 +15,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 
+	metal3 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/metal3-io/baremetal-operator/pkg/imageprovider"
 
 	aiv1beta1 "github.com/openshift/assisted-service/api/v1beta1"
@@ -68,7 +69,7 @@ func jsonEqual(our string, their string) (bool, error) {
 }
 
 // UpdateInfraEnv updates the provided InfraEnv with the provided ignitionConfig.
-// If the InfraEnv is already ready, nil is returned.
+// If the InfraEnv is already up-to-date, nil is returned.
 func UpdateInfraEnv(client client.Client, infraenv *aiv1beta1.InfraEnv, ignitionConfig string, log logr.Logger) error {
 	equivalent, err := jsonEqual(ignitionConfig, infraenv.Spec.IgnitionConfigOverride)
 	if err != nil {
@@ -87,21 +88,44 @@ func UpdateInfraEnv(client client.Client, infraenv *aiv1beta1.InfraEnv, ignition
 		return imageprovider.ImageNotReady{}
 	}
 
+	return nil
+}
+
+// GetImageFromInfraEnv returns an appropriate image from the provided InfraEnv.
+// ImageNotReady is returned if the InfraEnv is not ready yet.
+func GetImageFromInfraEnv(infraenv *aiv1beta1.InfraEnv, format metal3.ImageFormat, log logr.Logger) (string, error) {
 	condition := conditionsv1.FindStatusCondition(infraenv.Status.Conditions, aiv1beta1.ImageCreatedCondition)
 	if condition != nil && condition.Status == corev1.ConditionTrue && condition.Reason == aiv1beta1.ImageCreatedReason {
 		imageReadyTime := infraenv.Status.CreatedTime.Time.Add(InfraEnvImageCooldownPeriod)
 		if imageReadyTime.After(time.Now()) {
 			// NOTE(dtantsur): this replicates the logic in the assisted service
 			log.Info("InfraEnv is too recent, requeueing", "infraEnv", infraenv.Name, "until", imageReadyTime)
-			return imageprovider.ImageNotReady{}
+			return "", imageprovider.ImageNotReady{}
 		}
-		return nil
+	} else {
+		if condition != nil {
+			log.Info("InfraEnv is not ready", "infraEnv", infraenv.Name, "reason", condition.Reason, "message", condition.Message)
+		} else {
+			// This can happen with a newly created InfraEnv
+			log.Info("InfraEnv is not reconciled yet", "infraEnv", infraenv.Name)
+		}
+		return "", imageprovider.ImageNotReady{}
 	}
 
-	if condition != nil {
-		log.Info("InfraEnv is not ready", "infraEnv", infraenv.Name, "reason", condition.Reason, "message", condition.Message)
-	} else {
-		log.Info("InfraEnv is not reconciled yet", "infraEnv", infraenv.Name)
+	switch format {
+	case metal3.ImageFormatISO:
+		if infraenv.Status.ISODownloadURL == "" {
+			return "", errors.Errorf("InfraEnv %s is ready but does not have an ISO link", infraenv.Name)
+		}
+		return infraenv.Status.ISODownloadURL, nil
+
+	case metal3.ImageFormatInitRD:
+		if infraenv.Status.BootArtifacts.InitrdURL == "" {
+			return "", errors.Errorf("InfraEnv %s is ready but does not have an initrd link", infraenv.Name)
+		}
+		return infraenv.Status.BootArtifacts.InitrdURL, nil
+
+	default:
+		return "", errors.Errorf("image format %s is not supported by InfraEnv %s", format, infraenv.Name)
 	}
-	return imageprovider.ImageNotReady{}
 }

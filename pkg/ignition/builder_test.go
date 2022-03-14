@@ -11,7 +11,7 @@ func TestGenerateStructure(t *testing.T) {
 	builder, err := New(nil, nil,
 		"http://ironic.example.com",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
-		"", "", "", "", "", "", "")
+		"", "", "", "", "", "", "virthost", false)
 	assert.NoError(t, err)
 
 	ignition, err := builder.generate()
@@ -19,7 +19,7 @@ func TestGenerateStructure(t *testing.T) {
 
 	assert.Equal(t, "3.2.0", ignition.Ignition.Version)
 	assert.Len(t, ignition.Systemd.Units, 1)
-	assert.Len(t, ignition.Storage.Files, 2)
+	assert.Len(t, ignition.Storage.Files, 3)
 	assert.Len(t, ignition.Passwd.Users, 0)
 
 	// Sanity-check only
@@ -32,7 +32,7 @@ func TestGenerateWithMerge(t *testing.T) {
 	builder, err := New(nil, nil,
 		"http://ironic.example.com",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
-		"", "", "", "", "", "", "")
+		"", "", "", "", "", "", "", false)
 	assert.NoError(t, err)
 
 	mergeWith := []byte(`
@@ -83,6 +83,26 @@ func TestGenerateWithMerge(t *testing.T) {
 	assert.Equal(t, ignition.Storage.Files[2].Path, "/etc/NetworkManager/conf.d/clientid.conf")
 }
 
+func TestGenerateWithAssisted(t *testing.T) {
+	builder, err := New(nil, nil,
+		"http://ironic.example.com",
+		"quay.io/openshift-release-dev/ironic-ipa-image",
+		"", "", "", "", "", "", "", true)
+	assert.NoError(t, err)
+
+	ignition, err := builder.generate()
+	assert.NoError(t, err)
+
+	assert.Equal(t, "3.2.0", ignition.Ignition.Version)
+	assert.Len(t, ignition.Systemd.Units, 2)
+	assert.Len(t, ignition.Storage.Files, 2)
+	assert.Len(t, ignition.Passwd.Users, 0)
+
+	assert.Contains(t, *ignition.Systemd.Units[0].Contents, "ironic-agent")
+	assert.Equal(t, ignition.Systemd.Units[1].Name, "agent.service")
+	assert.False(t, *ignition.Systemd.Units[1].Enabled)
+}
+
 func TestGenerateRegistries(t *testing.T) {
 	registries := `
 [[registry]]
@@ -96,7 +116,7 @@ func TestGenerateRegistries(t *testing.T) {
 	builder, err := New([]byte{}, []byte(registries),
 		"http://ironic.example.com",
 		"quay.io/openshift-release-dev/ironic-ipa-image",
-		"", "", "", "", "", "", "virthost")
+		"", "", "", "", "", "", "virthost", false)
 	assert.NoError(t, err)
 
 	ignition, err := builder.Generate()

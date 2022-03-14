@@ -50,7 +50,7 @@ func (ip *rhcosImageProvider) SupportsFormat(format metal3.ImageFormat) bool {
 	}
 }
 
-func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.NetworkData, hostname string, mergeWith []byte) ([]byte, error) {
+func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.NetworkData, hostname string, mergeWith []byte, disableAssistedAgent bool) ([]byte, error) {
 	nmstateData := networkData["nmstate"]
 
 	builder, err := ignition.New(nmstateData, ip.RegistriesConf,
@@ -63,6 +63,7 @@ func (ip *rhcosImageProvider) buildIgnitionConfig(networkData imageprovider.Netw
 		ip.EnvInputs.HttpsProxy,
 		ip.EnvInputs.NoProxy,
 		hostname,
+		disableAssistedAgent,
 	)
 	if err != nil {
 		return nil, imageprovider.BuildInvalidError(err)
@@ -95,7 +96,7 @@ func (ip *rhcosImageProvider) BuildImage(data imageprovider.ImageData, networkDa
 		return url, err
 	}
 
-	ignitionConfig, err := ip.buildIgnitionConfig(networkData, data.ImageMetadata.Name, nil)
+	ignitionConfig, err := ip.buildIgnitionConfig(networkData, data.ImageMetadata.Name, nil, false)
 	if err != nil {
 		return "", err
 	}
@@ -120,7 +121,7 @@ func (ip *rhcosImageProvider) buildImageWithInfraEnv(data imageprovider.ImageDat
 
 	log.Info("using InfraEnv to build an image, network data will be ignored", "hostName", data.ImageMetadata.Name, "infraEnv", infraenv.Name)
 
-	ignitionConfig, err := ip.buildIgnitionConfig(nil, data.ImageMetadata.Name, []byte(infraenv.Spec.IgnitionConfigOverride))
+	ignitionConfig, err := ip.buildIgnitionConfig(nil, data.ImageMetadata.Name, []byte(infraenv.Spec.IgnitionConfigOverride), true)
 	if err != nil {
 		return "", err
 	}

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	"k8s.io/utils/pointer"
 
 	ignition_config_32 "github.com/coreos/ignition/v2/config/v3_2"
 	ignition_config_types_32 "github.com/coreos/ignition/v2/config/v3_2/types"
@@ -34,9 +35,10 @@ type ignitionBuilder struct {
 	httpsProxy            string
 	noProxy               string
 	hostname              string
+	disableAssistedAgent  bool
 }
 
-func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey, ipOptions string, httpProxy, httpsProxy, noProxy string, hostname string) (*ignitionBuilder, error) {
+func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ironicAgentPullSecret, ironicRAMDiskSSHKey, ipOptions string, httpProxy, httpsProxy, noProxy string, hostname string, disableAssistedAgent bool) (*ignitionBuilder, error) {
 	if ironicBaseURL == "" {
 		return nil, errors.New("ironicBaseURL is required")
 	}
@@ -56,6 +58,7 @@ func New(nmStateData, registriesConf []byte, ironicBaseURL, ironicAgentImage, ir
 		httpsProxy:            httpsProxy,
 		noProxy:               noProxy,
 		hostname:              hostname,
+		disableAssistedAgent:  disableAssistedAgent,
 	}, nil
 }
 
@@ -87,6 +90,14 @@ func (b *ignitionBuilder) generate() (ignition_config_types_32.Config, error) {
 			Units: []ignition_config_types_32.Unit{b.ironicAgentService()},
 		},
 	}
+
+	if b.disableAssistedAgent {
+		config.Systemd.Units = append(config.Systemd.Units, ignition_config_types_32.Unit{
+			Name:    "agent.service",
+			Enabled: pointer.BoolPtr(false),
+		})
+	}
+
 	if b.ironicAgentPullSecret != "" {
 		config.Storage.Files = append(config.Storage.Files, b.authFile())
 	}
